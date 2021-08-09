@@ -1,0 +1,1070 @@
+#platform "uLCD-43PT_GFX2"
+#inherit "4DGL_16bitColours.fnc"
+#inherit "MS_SanSerif8x12.fnt"
+#inherit "FONT4.fnt"
+
+#MODE RUNFLASH
+
+//Pip-Boy 2000+ Program Version 1.0
+//Released under a (liscense)
+
+#DATA
+
+
+    word bootText
+         boot0, boot1, boot2
+
+    byte boot0 "ROBCO INDUSTRIES (TM) PIPBOY MODEL 2000+\nREV-V100\n\n",0
+    byte boot1 "Initializing RobCo Industries (TM) PipOS v1.0.0\n\n\n",0
+    byte boot2 "Mounting internal holodisk drive\nHolodisk drive mounted",0
+
+    word terminalText0
+         line0, line1, line2, line3, line4
+
+    byte line0 "WELCOME TO ROBCO INDUSTRIES (TM) TERMLINK\n\n>SET TERMINAL/INQUIRE\n\n",0
+    byte line1 "RET-V300\n\n>SET FILE/PROTECTION-OWNER:RWED ACCOUNTS.F\n",0
+    byte line2 ">SET HALT RESTART/MAINT\n\nInitializing Robco Industries(TM) MF Boot Agent v2.3.0\n",0
+    byte line3 "RETROS BIOS\nRBIOS-4.02.08.00 52EE5.E7.E8\nCopyright 2201-2203 Robco Ind.\n",0
+    byte line4 "Uppermem: 64 KB\nRoot (5A8)\nMaintenance Mode\n\n>RUN DEBUG/ACCOUNTS.F",0
+
+    word terminalText1// in the next version I plan on storing this data in a .txt file and finding out a way to randomly disperse words throughout, and making the terminal dynamic of course. This shouldn't be too hard.
+         lineA, lineB, lineC, lineD, lineE, lineF, lineG, lineH, lineI
+
+    byte lineA "ROBCO INDUSTRIES (TM) TERMLINK PROTOCOL::ENTER PASSWORD NOW\n4 ATTEMPT(S) LEFT: [] [] [] []\n\n",0
+    byte lineB "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineC "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineD "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineE "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineF "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineG "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineH "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   0123456789012   0XFB04   0123456789012\n",0
+    byte lineI "0XF9EC   0123456789012   0XFAF8   0123456789012\n0XFAF8   01have6789012   0XFB04   0123456789012   >0123456789012",0
+
+#END
+
+var D;// disk
+var *imageList;// pointer to our list of images stored on the uSD card
+//*************************************************************************MODE (state variables)
+var mode := 0;
+var lastMode := 0;
+var drawn := 0;
+//*************************************************************************MODE
+
+
+var level := 1;
+var lvlUp := 0;
+var exp := 0;
+var expReq := 0;
+var curHP := 0;
+var HP := 0;
+var curAP := 0;
+var AP := 0;
+
+var special := 4;
+var Strength := 5;
+var Perception := 7;
+var Endurance := 5;
+var Charisma := 8;
+var Intelligence := 7;
+var Agility := 3;
+var Luck := 7;
+
+var barter := 0;
+var energyWeapons := 0;
+var explosives := 0;
+var guns := 0;
+var lockpick := 0;
+var medicine := 0;
+var meleeWeapons := 0;
+var repair := 0;
+var science := 0;
+var sneak := 0;
+var speech := 0;
+var survival := 0;
+var unarmed := 0;
+
+var bckgrndClr;
+var color;
+var dimColor;
+var darkColor;
+
+var printDelay;
+var ledVal;
+var lastLedVal := 1;
+var lightState;
+
+var combuf[45];
+var combuf1[14];
+
+var rectX;
+var rectY;
+var lineX;
+var lineY;
+var index;
+var n;
+var char;
+
+//var hour; Time and Date aren't implemented in this version
+//var minute;
+//var day;
+//var month;
+//var year;
+
+var ANG;//heading angle
+var FIX;//position fix
+var mapXzero := 25;
+var mapYzero := 29;
+var showMapIcons := 0;
+
+func main()
+
+//initialization
+
+ color := gfx_RGBto565(25, 255, 132);//bright green
+ //color := gfx_RGBto565(0, 180, 57);//light green
+ //color := gfx_RGBto565(217, 155, 40);//bright amber
+ dimColor := gfx_RGBto565(0, 140, 20);//dim green
+ darkColor := gfx_RGBto565(0, 70, 10);//very dim green
+ //dimColor := gfx_RGBto565(100, 59, 0);//dim amber
+ //bckgrndClr := gfx_RGBto565(4, 26, 13);//dark green
+ //gfx_BGcolour(bckgrndClr);//now any calls to clear the screen will do so with this color instead of black
+ txt_Set(TEXT_COLOUR, color);
+ txt_FontID(MS_SanSerif8x12);
+ txt_Set(9, 1);//bold text
+
+ gfx_Cls();
+ txt_Set(TEXT_OPACITY, 0);
+
+    if (!(D:=file_Mount()))
+        while(!(D:=file_Mount()))
+            putstr("INTERNAL ERROR 0x00: Holodisk drive not mounted");//the "holodisk" is actually the microSD card ;)
+            pause(500);
+            gfx_Cls();
+            pause(500);
+        wend
+    endif
+
+imageList := file_LoadImageControl("graphics.dat", "graphics.gci",1);
+img_Enable(imageList, ALL);//this enables all the images
+
+bootUp();
+
+ snd_BufSize(2);//allocate 4096 bytes to the sound buffer
+ snd_Volume(127); // Set Volume to maximum
+ //snd_Stop();
+
+
+
+pin_Set(OUTPUT, IO2_PIN); // set IO2 to be used as an output for the "Power" light
+pin_Set(INPUT, IO1_PIN); // set IO1 to be used as an input for the "Power" button
+
+com_SetBaud(COM1, 960);//this is actually 9600 BAUD, but it needs to be formatted as (BAUD/10) for the function parameters (The RFID-12 serial is output at 9600 BAUD)
+com_Init(combuf, 44, '$');//set up a serial communications buffer in the background with a maximum size of 22 elements that must be preceded by a "$" character before we accept anything
+com1_Init(combuf1, 14, '4');
+
+calcBaseStats();
+repeat
+//************************************************Default Mode********************************************************************************************************************************************************************
+
+updateMode();
+checkPwrBtn();
+
+//***************************************************************************Stats Display**************************************************************************************************************************************
+if (mode == 239) // Why don't I have this set up to be the first mode, which would be "127" ? For some very, very unknown reason, playing .WAV files in the first two mode states causes the screen to crash and blackout.
+                 //Why? I haven't the foggiest. I've already spent several hours debugging this issue to no avail. But we can play .WAV files in the latter 6 mode states without a problem.
+
+     if(drawn == 0)
+
+        gfx_Rectangle(191, 251, 228, 265, color);//highlights the Stats tab
+        gfx_RectangleFilled(192, 252, 227, 264, darkColor);
+        drawBorders();
+
+        //SPECIAL stats
+
+        rectY := 106 + (18 * special);
+        gfx_Rectangle(6, rectY, 113, (rectY + 15), color);//highlights the current selected SPECIAL stat (needs to adjust according to Xpos of rotary encoder
+        gfx_RectangleFilled(7, (rectY + 1), 112, (rectY + 14), darkColor);
+
+             if (special == 1)
+
+                img_SetPosition(imageList, 49, 20, 37);//Strong Boy Icon
+                img_Show(imageList, 49);
+
+             endif
+             if (special == 2)
+
+                img_SetPosition(imageList, 47, 20, 37);//Perceptive Vault Boy Icon
+                img_Show(imageList, 47);
+
+             endif
+             if (special == 3)
+
+                img_SetPosition(imageList, 45, 20, 37);//Enduring Vault Boy Icon
+                img_Show(imageList, 45);
+
+             endif
+             if (special == 4)
+
+                img_SetPosition(imageList, 44, 20, 37);//Charismatic Vault Boy Icon
+                img_Show(imageList, 44);
+
+             endif
+             if (special == 5)
+
+                img_SetPosition(imageList, 46, 20, 37);//Intelligent Vault Boy Icon
+                img_Show(imageList, 46);
+
+             endif
+             if (special == 6)
+
+                img_SetPosition(imageList, 43, 20, 37);//Agile Vault Boy Icon
+                img_Show(imageList, 43);
+
+             endif
+             if (special == 7)
+
+                img_SetPosition(imageList, 47, 20, 37);//Lucky Vault Boy Icon
+                img_Show(imageList, 47);
+
+             endif
+
+        txt_MoveCursor(1, 2);
+        print("S.P.E.C.I.A.L.");
+
+        txt_Ygap(6);
+        txt_MoveCursor(7, 1);
+        print("Strength");
+        txt_MoveCursor(7, 13);
+        print(Strength);
+
+        txt_MoveCursor(8, 1);
+        print("Perception");
+        txt_MoveCursor(8, 13);
+        print(Perception);
+
+        txt_MoveCursor(9, 1);
+        print("Endurance");
+        txt_MoveCursor(9, 13);
+        print(Endurance);
+
+        txt_MoveCursor(10, 1);
+        print("Charisma");
+        txt_MoveCursor(10, 13);
+        print(Charisma);
+
+        txt_MoveCursor(11, 1);
+        print("Intelligence");
+        txt_MoveCursor(11, 13);
+        print(Intelligence);
+
+        txt_MoveCursor(12, 1);
+        print("Agility");
+        txt_MoveCursor(12, 13);
+        print(Agility);
+
+        txt_MoveCursor(13, 1);
+        print("Luck");
+        txt_MoveCursor(13, 13);
+        print(Luck);
+
+        gfx_Rectangle(122, 2, 123, 29, color);//separates the SPECIAL from skill info
+
+        txt_MoveCursor(1, 17);
+        print("Barter");
+        txt_MoveCursor(1, 31);
+        print(barter);
+
+        txt_MoveCursor(2, 17);
+        print("Energy Weapons");
+        txt_MoveCursor(2, 31);
+        print(energyWeapons);
+
+        txt_MoveCursor(3, 17);
+        print("Explosives");
+        txt_MoveCursor(3, 31);
+        print(explosives);
+
+        txt_MoveCursor(4, 17);
+        print("Guns");
+        txt_MoveCursor(4, 31);
+        print(guns);
+
+        txt_MoveCursor(5, 17);
+        print("Lockpick");
+        txt_MoveCursor(5, 31);
+        print(lockpick);
+
+        txt_MoveCursor(6, 17);
+        print("Medicine");
+        txt_MoveCursor(6, 31);
+        print(medicine);
+
+        txt_MoveCursor(7, 17);
+        print("Melee Weapons");
+        txt_MoveCursor(7, 31);
+        print(meleeWeapons);
+
+        txt_MoveCursor(8, 17);
+        print("Repair");
+        txt_MoveCursor(8, 31);
+        print(repair);
+
+        txt_MoveCursor(9, 17);
+        print("Science");
+        txt_MoveCursor(9, 31);
+        print(science);
+
+        txt_MoveCursor(10, 17);
+        print("Sneak");
+        txt_MoveCursor(10, 31);
+        print(sneak);
+
+        txt_MoveCursor(11, 17);
+        print("Speech");
+        txt_MoveCursor(11, 31);
+        print(speech);
+
+        txt_MoveCursor(12, 17);
+        print("Survival");
+        txt_MoveCursor(12, 31);
+        print(survival);
+
+        txt_MoveCursor(13, 17);
+        print("Unarmed");
+        txt_MoveCursor(13, 31);
+        print(unarmed);
+
+        gfx_Rectangle(274, 2, 275, 29, color);//separates the skill from character info (HP, AP, and Experience)
+
+        txt_MoveCursor(2, 45);
+        print("General:");
+        txt_MoveCursor(3, 45);
+        print("Level ", level);
+        txt_MoveCursor(4, 45);
+        print("HP ", HP, "/", HP);//change the first HP or AP variables to curHP or curAP to dynamically adjust them
+        txt_MoveCursor(5, 45);//since there's no function that affects the current points, there's no reason to modify them yet
+        print("AP ", AP, "/", AP);
+
+        img_SetPosition(imageList, 39, 280, 37);//Neutral Karma Vault Boy Icon
+        img_Show(imageList, 39);
+
+        //var expTriX; This will be cut for now until I can figure out handling percentages without floats or multiplying by 100 since that would overflow at higher levels of experience, this bit is unfinished
+        //if (exp != 0)//check so that we don't divide by zero!
+        //expTriX :=
+        //endif
+        //gfx_TriangleFilled(expTriX, 160, (expTriX+7), 160, (expTriX+3), 164, colr);//relative percentage marker to next level
+
+
+        txt_MoveCursor(9, 36);//level markings to the left and right of the exp meter
+        print(level);
+        txt_MoveCursor(9, 58);
+        print(level+1);
+
+            for(lineX := 300; lineX <= 475; lineX += 16)
+                gfx_Rectangle(lineX, 166, (lineX+1), 174, color);//horizontal lines for exp meter
+            next
+
+        checkLvlUp();
+
+        gfx_Rectangle(478, 148, 479, 175, color);//exp meter vertical line
+        gfx_Rectangle(274, 175, 479, 176, color);//horizontal line below exp meter
+        gfx_Rectangle(274, 179, 479, 180, color);//horizontal line above exp points
+        gfx_Rectangle(478, 180, 479, 206, color);//exp points vertical line
+        txt_MoveCursor(10, 36);
+        print("Exp ", exp, "/", expReq);
+        //txt_MoveCursor(10, 53);
+        //txt_Width(2);
+        //txt_Height(2);
+
+        //print("+55");test of big exp number
+        while(snd_Playing())//The screen can't play two .WAV files at once, so we need to wait until the first one is done
+        wend
+        playStatic();
+
+
+        endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Stats Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Items Display******************************************************************************************************************************************
+if (mode == 247)
+
+     if(drawn == 0)//I decided to implement the "Items" tab last, unfortunately, I've run out of availabe RAM, so no go for now
+
+         gfx_Rectangle(236, 251, 274, 265, color);//highlights the Items tab in the lower left
+         gfx_RectangleFilled(237, 252, 273, 264, darkColor);
+         drawBorders();
+
+         txt_MoveCursor(9, 17);
+         print("ERROR 0x0038 NO ITEMS DETECTED");
+         img_SetPosition(imageList, 5, 50, 75);//Sad Vault Boy Icon
+         img_Show(imageList, 5);
+
+        /*
+         txt_Ygap(6);
+         txt_MoveCursor(6, 44);
+         //print("DT 3\nWG 2\nVAL 500\n");
+         //print("CND\nLight");
+
+         txt_MoveCursor(2, 5);
+         print("INVENTORY");
+
+         gfx_Rectangle(243, 17, 330, 31, color);//highlights the top selection
+         gfx_RectangleFilled(244, 18, 329, 30, darkColor);
+         gfx_RectangleFilled(246, 20, 253, 27, color);//little "equiped" rectangle next to the text
+         txt_MoveCursor(1, 32);
+         print("Lab Coat\n");
+         print("Pre-War Casual Wear\n");
+         print("Pre-War Business Wear\n");
+         print("Shady Hat\n");
+         print("Eyeglasses\n");
+         print("Lab Coat\n");
+
+         //img_SetPosition(imageList, 28, 170,50);//geck icon
+         //img_Show(imageList, 28);
+
+         //img_SetPosition(imageList, 0, 300,50);//glasses
+         //img_Show(imageList, 0);
+
+         img_SetPosition(imageList, 42, 50,50);//schematic
+         img_Show(imageList, 42);
+
+         img_SetPosition(imageList, 1, 375,25);//lab coat
+         img_Show(imageList, 1);*/
+
+        while(snd_Playing())
+        wend
+        playStatic();
+
+      endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Items Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Data Display*******************************************************************************************************************************************
+if (mode == 251)
+
+     if(drawn == 0)
+
+        gfx_Rectangle(282, 251, 316, 265, color);//highlights the Data tab in the lower left
+        gfx_RectangleFilled(283, 252, 315, 264, darkColor);
+        drawBorders();
+
+        //Placeholder "Quest" Graphics (soon to be dynamic! That is, read from a .txt file stored on the uSD card)
+        txt_MoveCursor(1,3);
+        print("QUESTS");
+
+        txt_Ygap(9);
+        txt_MoveCursor(2,2);
+        print("That Lucky Old Sun");
+
+        txt_MoveCursor(3,2);
+        print("They Went That-a-Way");
+
+        gfx_Rectangle(0, 83, 150, 98, color);//highlights the quest
+        gfx_RectangleFilled(1, 84, 149, 97, darkColor);
+        gfx_RectangleFilled(6, 88, 12, 94, color);//little "active" rectangle next to the text
+        txt_MoveCursor(4,2);
+        print("My Kind of Town");
+
+        txt_MoveCursor(5,2);
+        print("Come Fly With Me");
+
+        txt_MoveCursor(6,2);
+        print("The Job");
+
+        txt_MoveCursor(7,2);
+        print("The House Always Wins");
+
+        txt_MoveCursor(8,2);
+        print("Happy Trails Expedition");
+
+        txt_MoveCursor(9,2);
+        print("Midnight");
+        txt_Ygap(2);txt_MoveCursor(15,2);
+        print("Science-Fiction Feature!");
+
+        gfx_Rectangle(158, 75, 164, 81, color);//little "active" rectangle next to the text
+        txt_Ygap(6);
+        txt_MoveCursor(4,21);print("Beagle wants a new");
+        txt_MoveCursor(5,21);print("sheriff for Primm. He");
+        txt_MoveCursor(6,21);print("suggested and ex-sheriff");
+        txt_MoveCursor(7,21);print("at NCRCF and the NCR as");
+        txt_MoveCursor(8,21);print("potential candidates.");
+        txt_Set(TEXT_COLOUR, darkColor);
+        gfx_RectangleFilled(158, 165, 164, 171, darkColor);
+        txt_MoveCursor(9,21);print("Beagle has been rescued");
+        txt_MoveCursor(10,21);print("from the Bison Steve. Talk");
+        txt_MoveCursor(11,21);print("to him about protecting");
+        txt_MoveCursor(12,21);print("the town.");
+        txt_Set(TEXT_COLOUR, color);
+
+
+        txt_MoveCursor(1, 47);//date and time
+        print("04.22.12, 12:36");//placeholder
+
+        //create the "audio waveform grid" This displays, but is not dynamic for the time being
+        gfx_Rectangle(478, 50, 479, 200, color);//right side of radio waveform bracket
+        gfx_Rectangle(328, 199, 477, 200, color);//bottom side
+
+        for (rectY := 52; rectY <= 199; rectY += 4)
+        gfx_Hline(rectY, 470, 477, dimColor);//horizontal notches rightmost
+        next
+        for (lineY := 72; lineY <= 200; lineY += 24)
+        gfx_Hline(lineY, 462, 469, dimColor);//horizontal notches right
+        next
+        for (lineX := 330; lineX <= 476; lineX += 4)
+        gfx_Vline(lineX, 191, 198, dimColor);//vertical notches bottom
+        next
+        for (lineX := 334; lineX <= 460; lineX += 24)
+        gfx_Vline(lineX, 183, 190, dimColor);//vertical notches top
+        next
+
+        gfx_Rectangle(328, 120, 476, 121, color);//"no audio" waveform line
+        //******************************************************************************END audio waveform grid
+
+        txt_Ygap(0);
+        txt_MoveCursor(17, 41);
+        print("Radio Data: UNAVAILABLE");
+        while(snd_Playing())
+        wend
+        playStatic();
+
+     endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Data Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Navigation Display*************************************************************************************************************************************
+if (mode == 253)
+
+     com_Init(combuf, 45, '$');//we need to continually reinitialize the buffer everytime we read data from it
+
+     if(drawn == 0)
+
+        gfx_Rectangle(324, 251, 392, 265, color);//highlights the Navigation tab in the lower left
+        gfx_RectangleFilled(325, 252, 391, 264, darkColor);
+        drawBorders();
+
+        txt_MoveCursor(1, 1);
+        print("World Map Data: UNAVAILABLE");
+
+             for (lineY := 52; lineY <= 220; lineY += 24)//left
+             gfx_Hline(lineY, 24, 36, dimColor);//horizontal grid lines for the map
+             next
+
+             for (lineY := 52; lineY <= 220; lineY += 24)//right
+             gfx_Hline(lineY, 228, 240, dimColor);//horizontal grid lines for the map
+             next
+
+             for (lineX := 48; lineX <= 216; lineX += 24)//top
+             gfx_Vline(lineX, 28, 40, dimColor);//vertical grid lines for the map
+             next
+
+             for (lineX := 48; lineX <= 216; lineX += 24)//bottom
+             gfx_Vline(lineX, 232, 244, dimColor);//vertical grid lines for the map
+             next
+
+        //these are the longer lines that divide our grid into thirds
+        gfx_Vline(96, 40, 232, dimColor);//left
+        gfx_Vline(168, 40, 232, dimColor);//right
+        gfx_Hline(100, 36, 228, dimColor);//top
+        gfx_Hline(172, 36, 228, dimColor);//bottom
+
+        gfx_Rectangle(24, 28, 240, 244, color);//boundary box
+
+        if(showMapIcons)
+        img_SetPosition(imageList, 9, mapXzero, mapYzero);//Cave Icon
+        img_Show(imageList, 9);
+
+        img_SetPosition(imageList, 10, (mapXzero + (24 * 2)), (mapYzero + (24 * 0)));//City Icon
+        img_Show(imageList, 10);
+
+        img_SetPosition(imageList, 11, (mapXzero + (24 * 4)), (mapYzero + (24 * 0)));//Encampment Icon
+        img_Show(imageList, 11);
+
+        img_SetPosition(imageList, 12, (mapXzero + (24 * 6)), (mapYzero + (24 * 0)));//Factory Icon
+        img_Show(imageList, 12);
+
+        img_SetPosition(imageList, 13, (mapXzero + (24 * 8)), (mapYzero + (24 * 0)));//Metro Icon
+        img_Show(imageList, 13);
+
+        img_SetPosition(imageList, 14, (mapXzero + (24 * 0)), (mapYzero + (24 * 2)));//Military Icon
+        img_Show(imageList, 14);
+
+        img_SetPosition(imageList, 15, (mapXzero + (24 * 2)), (mapYzero + (24 * 2)));//Monument Icon
+        img_Show(imageList, 15);
+
+        img_SetPosition(imageList, 16, (mapXzero + (24 * 4)), (mapYzero + (24 * 2)));//Natural Landmark Icon
+        img_Show(imageList, 16);
+
+        img_SetPosition(imageList, 17, (mapXzero + (24 * 6)), (mapYzero + (24 * 2)));//Office Icon
+        img_Show(imageList, 17);
+
+        img_SetPosition(imageList, 18, (mapXzero + (24 * 8)), (mapYzero + (24 * 2)));//Settlement Icon
+        img_Show(imageList, 18);
+
+        img_SetPosition(imageList, 19, (mapXzero + (24 * 0)), (mapYzero + (24 * 4)));//Sewer Ruins Icon
+        img_Show(imageList, 19);
+
+        img_SetPosition(imageList, 20, (mapXzero + (24 * 2)), (mapYzero + (24 * 4)));//Town Ruins Icon
+        img_Show(imageList, 20);
+
+        img_SetPosition(imageList, 21, (mapXzero + (24 * 4)), (mapYzero + (24 * 4)));//Undiscovered Icon
+        img_Show(imageList, 21);
+
+        img_SetPosition(imageList, 22, (mapXzero + (24 * 6)), (mapYzero + (24 * 4)));//Urban Ruins Icon
+        img_Show(imageList, 22);
+
+        img_SetPosition(imageList, 23, (mapXzero + (24 * 8)), (mapYzero + (24 * 4)));//Vault Icon
+        img_Show(imageList, 23);
+        endif
+
+        gfx_Rectangle(260, 135, 479, 136, color);//top horizontal right divider
+        gfx_Rectangle(478, 137, 479, 163, color);//top vertical right border
+
+        gfx_Rectangle(260, 175, 479, 176, color);// bottom horizontal right divider
+        gfx_Rectangle(478, 177, 479, 203, color);//bottom vertical right border
+
+        var circleX, circleY, circleRad;
+        var targetX, targetY;
+        circleX := 325; circleY := 65; circleRad := 50;
+        gfx_OrbitInit(&targetX, &targetY);//this is just a necessary function that is required before we can call gfx_Orbit()
+        gfx_MoveTo(circleX, circleY);//set the orbit origin to the center of the circle
+        gfx_Orbit((ANG + 270), 45);// now our little house icon will "orbit" around the center of the circle depending on the relative angle
+
+        var tx[6], ty[6];
+
+        tx[0] := targetX;       ty[0] := (targetY - 3);//this may seem confusing, but it's just declaring the vertices of the shape for the gfx_PolygonFilled() function
+        tx[1] := (targetX + 5); ty[1] := (targetY + 5);
+        tx[2] := (targetX + 5); ty[2] := (targetY + 15);
+        tx[3] := targetX;       ty[3] := (targetY + 12);
+        tx[4] := (targetX - 5); ty[4] := (targetY + 15);
+        tx[5] := (targetX - 5); ty[5] := (targetY + 5);
+
+        gfx_PolygonFilled(6, tx, ty, color);//destination icon, looks like a little house
+
+        var nx[4], ny[4];//North/South diamond
+
+        nx[0] := circleX;       ny[0] := (circleY - 20);
+        nx[1] := (circleX + 6); ny[1] := circleY;
+        nx[2] := circleX;       ny[2] := (circleY + 20);
+        nx[3] := (circleX - 6); ny[3] := circleY;
+
+        gfx_PolygonFilled(4, nx, ny, color);
+        var ex[4], ey[4];//East/West diamond
+
+        ex[0] := circleX;        ey[0] := (circleY - 6);
+        ex[1] := (circleX + 20); ey[1] := circleY;
+        ex[2] := circleX;        ey[2] := (circleY + 6);
+        ex[3] := (circleX - 20); ey[3] := circleY;
+
+        gfx_PolygonFilled(4, ex, ey, color);
+        gfx_Line(circleX - 12, circleY - 12, circleX + 12, circleY + 12, color);//NW-SE line
+        gfx_Line(circleX + 12, circleY - 12, circleX - 12, circleY + 12, color);//NE-SW line
+        gfx_Circle(circleX, circleY, circleRad, color);
+
+        while(snd_Playing())
+        wend
+        playStatic();
+
+     endif
+
+    updateGPS();
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Navigation Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Terminal Display**************************************************************************************************************************************
+if (mode == 254)
+
+     if(drawn == 0)
+
+        gfx_Rectangle(400, 251, 456, 265, color);//highlights the Terminal tab in the lower left
+        gfx_RectangleFilled(401, 252, 455, 264, darkColor);
+        drawBorders();
+        while(snd_Playing())
+        wend
+        playStatic();
+        terminalGraphics();
+
+    endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Terminal Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Standby Display**************************************************************************************************************************************
+if (mode == 127)//These next functions are just placeholders until a further update. Since the mode variable is tied directly
+              //to the position of the rotary switch, it's easier to just have these filler modes formatted this way already.
+     if(drawn == 0)
+
+        Screensaver();//Falling Bomb Screensaver
+
+     endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Standby Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Standby Display**************************************************************************************************************************************
+if (mode == 191)
+
+     if(drawn == 0)
+
+        img_SetPosition(imageList, 26, 0,0);//PIP-Boy 2000+
+        img_Show(imageList, 26);
+
+     endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Standby Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Standby Display**************************************************************************************************************************************
+if (mode == 223)
+
+     if(drawn == 0)
+
+        img_SetPosition(imageList, 24, 0,0);//PLEASE STAND BY
+        img_Show(imageList, 24);
+
+     endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Standby Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//***************************************************************************Light Display**************************************************************************************************************************************
+if (mode == 1)//This mode can only be accessed by pressing and holding the "Power" button
+
+    if(drawn == 0)
+
+        file_PlayWAV("lighton.wav");//playWav light turn on
+        gfx_RectangleFilled(0, 0, 479, 271, color);//fill the whole screen with bright green
+
+    endif
+
+endif
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Light Display^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+forever
+endfunc
+//***************************************************************************Random Functions**************************************************************************************************************************************
+
+func updateMode()
+mode := bus_In();//Read the state of the 8bit bus of the input pins(pins 15, 17, 19, 21, 23, 25, 27, 29). The rotary switch uses pull-up resistors, so when we call the bus_In() function
+                 //the processor reads the state of all 8 pins at once into the variable "mode" and the "active switch" will be the 0 of the binary number
+                 //so position ONE of the switch is "01111111" in binary or 127 in decimal and position TWO is "10111111" and so on.
+
+if (mode == lastMode)// if the mode is the same as the last time, we've already drawn the graphics, and don't draw them again
+    drawn := 1;
+endif
+
+if (mode != lastMode)//Clear the screen in between mode changes
+
+     gfx_Cls();
+     //gfx_Transparency(1);//uncomment these two lines  to enable transparent images (use if you want to have the "raster scan lines" in the drawBorders() function)
+     //gfx_TransparentColour(BLACK);
+     txt_Set(TEXT_OPACITY, 0);//every time we call gfx_Cls(); the txt_Set() functions are reset to defaults, so we need to call it here again
+     lastMode := mode;
+     drawn := 0;
+
+endif
+endfunc
+
+func updateGPS()
+
+    txt_Set(TEXT_OPACITY, 1);//The Arduino is programed to output a serial string of predefined length at 45 bytes, so the Picaso processor can more easily read those values as if they were just stored in an array, which in this case is "combuf[]"
+      txt_MoveCursor(12, 34);// the values that are read into the serial buffer are only 8bit, so if we want to print them, we have to refer to them specifically by using the HI or LO byte functions and convert them to characters by placing [CHR] before the function
+        print("LAT: ", [CHR]HIbyte(combuf[5]), [CHR]LObyte(combuf[6]), [CHR]HIbyte(combuf[6]), [CHR]LObyte(combuf[7]), [CHR]HIbyte(combuf[7]), [CHR]LObyte(combuf[8]), [CHR]HIbyte(combuf[8]), [CHR]LObyte(combuf[9]), [CHR]HIbyte(combuf[9]), [CHR]LObyte(combuf[10]));
+        print("\nLON: ", [CHR]HIbyte(combuf[10]), [CHR]LObyte(combuf[11]), [CHR]HIbyte(combuf[11]), [CHR]LObyte(combuf[12]), [CHR]HIbyte(combuf[12]), [CHR]LObyte(combuf[13]), [CHR]HIbyte(combuf[13]), [CHR]LObyte(combuf[14]), [CHR]HIbyte(combuf[14]), [CHR]LObyte(combuf[15]), [CHR]HIbyte(combuf[15]));
+
+        print("\n\nSPD: ", [CHR]LObyte(combuf[16]), [CHR]HIbyte(combuf[16]), [CHR]LObyte(combuf[17]), " knots\n");
+        print("ALT: ", [CHR]LObyte(combuf[19]), [CHR]HIbyte(combuf[19]), [CHR]LObyte(combuf[20]), [CHR]HIbyte(combuf[20]), [CHR]LObyte(combuf[21]), " ft\n\n");
+        print("TRK: ", [CHR]HIbyte(combuf[21]), [CHR]LObyte(combuf[22]), " satellites");
+
+
+        txt_MoveCursor(10, 34);
+        print("ANG: ", [CHR]HIbyte(combuf[17]), [CHR]LObyte(combuf[18]), [CHR]HIbyte(combuf[18]), " deg");
+
+        FIX := (LObyte(combuf[0]) - 48);// [CHR] can only be used in the "print()" function, so we'll manually convert its value to the decimal that we need by subtracting 48 (making it the proper ASCII character)
+
+        if(FIX == 1)
+            img_SetPosition(imageList, 38, 395, 41);//Satellite Dish
+            img_Show(imageList, 38);
+            txt_MoveCursor(10, 48);
+            print("FIX ACQUIRED");
+        else
+            radioBeacon();
+        endif
+
+        txt_Set(TEXT_OPACITY, 0);
+        com_Reset();
+
+endfunc
+
+func playStatic()//play a "random" static noise (used for when we change modes)
+
+    var randNum;
+    randNum := ABS((RAND() % 100));//pick a random number from 0-99
+
+        if (randNum < 10) file_PlayWAV("static0.wav");
+        if (randNum > 9 && randNum < 20) file_PlayWAV("static1.wav");
+        if (randNum > 19 && randNum < 30) file_PlayWAV("static2.wav");
+        if (randNum > 29 && randNum < 40) file_PlayWAV("static3.wav");
+        if (randNum > 39 && randNum < 50) file_PlayWAV("static4.wav");
+        if (randNum > 49 && randNum < 60) file_PlayWAV("static5.wav");
+        if (randNum > 59 && randNum < 70) file_PlayWAV("static6.wav");
+        if (randNum > 69 && randNum < 80) file_PlayWAV("static7.wav");
+        if (randNum > 79 && randNum < 90) file_PlayWAV("static8.wav");
+        if (randNum > 89 && randNum < 100) file_PlayWAV("static9.wav");
+
+endfunc
+func drawBorders()
+
+    /*var rasterColor;uncomment this to draw raster lines behind the graphics (note: you must also uncommment the "transparency" code in the updateMode() function
+      rasterColor := gfx_RGBto565(0, 35, 5);
+
+        for (lineY := 0; lineY <= 272; lineY += 3)
+             gfx_Hline(lineY, 0, 479, rasterColor);//horizontal rasterlines
+        next*/
+
+             txt_Ygap(0);
+             txt_MoveCursor(21, 3);
+             print("0x0000 -- 0x0001 -- 0x0002 -- Stats -- Items -- Data -- Navigation -- Terminal");
+
+             gfx_Rectangle(2, 0, 477, 1, color);//top horizontal line
+             gfx_Rectangle(478, 0, 479, 29, color);//top right vertical line
+             gfx_Rectangle(0, 0, 1, 29, color);//top left vertical line
+
+             gfx_Rectangle(457, 258, 477, 259, color);//bottom right horizontal line
+             gfx_Rectangle(2, 258, 20, 259, color);//bottom left horizontal line
+             gfx_Rectangle(478, 232, 479, 259, color);//bottom right vertical line
+             gfx_Rectangle(0, 232, 1, 259, color);//bottom left vertical line
+             file_PlayWAV("tabSW.wav");
+
+endfunc
+func terminalGraphics()
+
+txt_MoveCursor(1, 1);
+
+    printDelay := 20;
+
+    for(n:=0; n < sizeof(terminalText0); n++)//scroll through our list of strings located int the #DATA area at the top of the program
+
+        mode := bus_In();// we have to include this code so that we are able to immediately leave the "terminal" tab when we turn the switch
+        if (mode != 254) break;
+
+        for (index:=0; index<strlen(terminalText0[n]); index++)//We want to print one character at a time, so this will do just that
+            print([CHR]*(terminalText0[n] + index));//this just prints the the current index position of our string as an ASCII character
+            pause(printDelay);
+            mode := bus_In();
+            if (mode != 254) break;
+        next
+
+    next
+
+    pause(500);//wait a bit
+    gfx_RectangleFilled(2, 2, 477, 245, BLACK);//only clear the interior of the screen
+    txt_MoveCursor(1, 1);
+    printDelay := 5;
+
+    for(n:=0; n < sizeof(terminalText1); n++)//scroll through our list of strings located int the #DATA area at the top of the program
+
+        mode := bus_In();
+        if (mode != 254) break;
+
+        for (index:=0; index<strlen(terminalText1[n]); index++)//We want to print one character at a time, so this will do just that
+            print([CHR]*(terminalText1[n] + index));//this just prints the the current index position of our string as an ASCII character
+            pause(printDelay);
+            mode := bus_In();
+            if (mode != 254) break;
+        next
+
+    next
+
+      file_PlayWAV("passgood.wav");
+
+
+endfunc
+
+func bootUp()
+
+    /*rfid0 := "4C003505A4D8",0//I already determined the tag data by testing it earlier and writing it down
+     rfid1 := "4C0034E41488",0 <- Platinum Chip
+     rfid2 := "4F00C2E8A2C7",0*/
+    var accessGranted := 0;
+    printDelay := 25;
+
+    for(n:=0; n < sizeof(bootText); n++)
+
+        for (index:=0; index<strlen(bootText[n]); index++)
+            print([CHR]*(bootText[n] + index));
+            pause(printDelay);
+        next
+
+    next
+    //playStatic();
+    gfx_Cls();
+
+    img_SetPosition(imageList, 26, 0,0);//PIP-Boy 2000+
+    img_Show(imageList, 26);
+
+    com1_Init(combuf1, 14, '4');
+
+
+    repeat
+
+        if (com1_Sync())                                 // we have qualifier, now receiving
+            txt_MoveCursor(1,1);
+            putstr("QUALIFIED");
+        endif
+
+        while(accessGranted != 1)
+
+             txt_MoveCursor(17, 15);
+             print("\nACCESS DENIED: INSERT PLATINUM CHIP");
+             pause(600);
+             gfx_RectangleFilled(100, 210, 400, 240, BLACK);
+             pause(600);
+
+            if (LObyte(combuf1[5]) == 56)//although the tags contain an entire unique string, we've only got three and this character is different for all three, so we only need to check this
+
+                txt_Set(TEXT_OPACITY, 1);
+                txt_MoveCursor(17, 15);
+                print("\nACCESS GRANTED: WELCOME, MR. HOUSE");
+                pause(2000);
+                accessGranted := 1;
+
+            endif
+
+        wend
+
+    until(com1_Full());
+
+endfunc
+
+func checkPwrBtn()
+
+    ledVal := pin_Read(IO1_PIN);
+
+     if (ledVal == 1 && lastLedVal == 0)
+        if (lightState ==  1)
+            lightState :=  0;
+        else
+            lightState :=  1;
+        endif
+     endif
+
+     if (lightState ==  1)
+         pin_HI(IO2_PIN);
+         mode := 1;//set to "Overbright mode"
+     endif
+     if (lightState ==  0)//exit to "Overbright mode"
+         pin_LO(IO2_PIN);
+         //mode := 223;//go to standby screen upon exit
+     endif
+
+    lastLedVal := ledVal;
+
+endfunc
+
+func Screensaver()
+
+         //media_Init();
+         //media_SetSector(0x0000, 0xF43A); These built in functions don't work unfortunately :(
+         //media_Video(0,0); but the below function will
+
+
+var private frame := 0;// start with frame 0
+var private image := 25;//falling bombs
+
+    while(1)
+    mode := bus_In();
+    if(mode != 127)break;//exit the screensaver loop if we turn the switch
+    img_SetPosition(imageList, 2, 0,0);
+    img_SetWord(imageList, 25, IMAGE_INDEX, frame++);
+    frame := frame % img_GetWord(imageList, 25, IMAGE_FRAMES);
+    img_Show(imageList, 25);
+    pause(300);
+    wend
+    updateMode();
+
+endfunc
+
+func radioBeacon()
+var private frame := 0;// start with frame 0
+var private image := 41;//radio beacon wave
+
+    txt_MoveCursor(10, 48);
+    print("ACQUIRING FIX");
+
+    while(1)
+    mode := bus_In();
+    if(mode != 253)break;
+    img_SetPosition(imageList, 41, 395,41);
+    img_SetWord(imageList, 41, IMAGE_INDEX, frame++);
+    frame := frame % img_GetWord(imageList, 41, IMAGE_FRAMES);
+    img_Show(imageList, 41);
+    pause(300);
+    wend
+
+    if(mode == 254)//for some reason breaking the while loop by entering the "terminal" mode wont check the mode update, so we have to check again
+    updateMode();// why not just put "updateMode" at the end of the previous while loop? This causes the screen to blank if we go to the "data" mode for some reason
+    endif
+
+endfunc
+
+func checkLvlUp()
+
+var maxExp := 32500;//why an experience cap? Since the Picaso processor only deals in signed 16bit integers, 32,767 is the most experience you can have
+                    //and based on the experience formula below, the requirement for level 21 is 32,500 so we'll set a cap right there
+
+expReq := 25*((3*(level+1))+2)*(level);// this is the same way experience requirements are calculated in FO3 and FNV
+
+if (exp > maxExp)
+exp := maxExp;
+endif
+
+if ((exp >= expReq) && (lvlUp == 0))//have we passed the experience threshold without leveling up?
+lvlUp := 1;//level up is now true
+endif
+
+if (lvlUp == 1)
+lvlUp := 0;
+//play sound, distribute points
+endif
+
+endfunc
+
+func calcBaseStats()
+
+HP := 95+(Endurance*20)+(level*5);
+
+AP := 65+(3*Agility);
+
+barter := 2+(2*Charisma)+(Luck/2);
+
+energyWeapons := 2+(2*Perception)+(Luck/2);
+
+explosives := 2+(2*Perception)+(Luck/2);
+
+guns := 2+(2*Agility) +(Luck/2);
+
+lockpick := 2+(2*Perception)+(Luck/2);
+
+medicine := 2+(2*Intelligence)+(Luck/2);
+
+meleeWeapons := 2+(2*Strength)+(Luck/2);
+
+repair := 2+(2*Intelligence)+(Luck/2);
+
+science := 2+(2*Intelligence)+(Luck/2);
+
+sneak := 2+(2*Agility)+(Luck/2);
+
+speech := 2+(2*Charisma)+(Luck/2);
+
+survival := 2+(2*Endurance)+(Luck/2);
+
+unarmed := 2+(2*Endurance)+(Luck/2);
+
+endfunc
+
+func calcSklPts()
+
+var sklPts;
+
+sklPts := 10+(Intelligence/2)// the points you get to distribute every time you level up
+
+endfunc
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^Random Functions^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
