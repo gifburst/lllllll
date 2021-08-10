@@ -12,12 +12,11 @@
 
 
     word bootText
-         boot0, boot1, boot2
+         boot0, boot1
 
-    byte boot0 "ROBCO INDUSTRIES (TM) PIPBOY MODEL 2000+\nREV-V100\n\n",0
-    byte boot1 "Initializing RobCo Industries (TM) PipOS v1.0.0\n\n\n",0
-    byte boot2 "Mounting internal holodisk drive\nHolodisk drive mounted",0
-
+    byte boot0 "SQUIRREL COMPUTERS (TM) CHIPLET 1.0\nREV-V100\n\n",0
+    byte boot1 "Initializing Squirrel Computers (TM) ChipOS v1.0.0\n\n\n",0
+    
     word terminalText0
          line0, line1, line2, line3, line4
 
